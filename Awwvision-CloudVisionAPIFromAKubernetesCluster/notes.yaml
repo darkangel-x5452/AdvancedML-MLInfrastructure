@@ -1,0 +1,27 @@
+gcloud auth list
+gcloud config list project
+
+# Create a Kubernetes Engine cluster
+gcloud config set compute/zone us-central1-a
+gcloud container clusters create awwvision \
+    --num-nodes 2 \
+    --scopes cloud-platform
+
+gcloud container clusters get-credentials awwvision
+kubectl cluster-info
+
+# Create a virtual environment
+sudo apt-get update && \
+sudo apt-get install virtualenv && \
+virtualenv -p python3 venv && \
+source venv/bin/activate
+
+# Sample
+gsutil -m cp -r gs://spls/gsp066/cloud-vision . && \
+cd cloud-vision/python/awwvision && \
+make all && \
+kubectl get pods && \
+kubectl get deployments -o wide && \
+kubectl get svc awwvision-webapp
+
+# Visit your new web app and start its crawler

@@ -1,0 +1,116 @@
+sudo apt-get update &&\
+sudo apt-get install virtualenv &&\
+virtualenv -p python3 venv &&\
+source venv/bin/activate &&\
+sudo apt -y update &&\
+sudo apt -y upgrade &&\
+sudo apt -y install python3-pip &&\
+pip install --upgrade pip &&\
+export PROJECT_ID=$(gcloud info --format='value(config.project)') &&\
+export BUCKET=${PROJECT_ID}
+
+# Create a deep neural network machine learning model
+gsutil cp gs://${BUCKET}/flights/chapter9/linear-model.tar.gz ~ &&\
+cd ~ &&\
+tar -zxvf linear-model.tar.gz &&\
+cd ~/tensorflow
+
+nano -w ~/tensorflow/flights/trainer/model-1.py
+export REGION=us-central1 && \
+export OUTPUT_DIR=gs://${BUCKET}/flights/chapter9/output && \
+export DATA_DIR=gs://${BUCKET}/flights/chapter8/output && \
+export JOBNAME=dnn_flights_$(date -u +%y%m%d_%H%M%S) && \
+cd ~/tensorflow
+gcloud ai-platform jobs submit training $JOBNAME \
+  --module-name=trainer.task \
+  --package-path=$(pwd)/flights/trainer \
+  --job-dir=$OUTPUT_DIR \
+  --staging-bucket=gs://$BUCKET \
+  --region=$REGION \
+  --scale-tier=STANDARD_1 \
+  --runtime-version=1.15 \
+  -- \
+  --output_dir=$OUTPUT_DIR \
+  --traindata $DATA_DIR/train* --evaldata $DATA_DIR/test*
+
+# Add a wide and deep neural network model
+nano -w ~/tensorflow/flights/trainer/model-2.py
+export OUTPUT_DIR=gs://${BUCKET}/flights/chapter9/output2 && \
+export JOBNAME=wide_and_deep_flights_$(date -u +%y%m%d_%H%M%S) && \
+gcloud ai-platform jobs submit training $JOBNAME \
+  --module-name=trainer.task \
+  --package-path=$(pwd)/flights/trainer \
+  --job-dir=$OUTPUT_DIR \
+  --staging-bucket=gs://$BUCKET \
+  --region=$REGION \
+  --scale-tier=STANDARD_1 \
+  --runtime-version=1.15 \
+  -- \
+  --output_dir=$OUTPUT_DIR \
+  --traindata $DATA_DIR/train* --evaldata $DATA_DIR/test*
+
+# Changing the learning rate
+nano -w ~/tensorflow/flights/trainer/model-3.py
+export OUTPUT_DIR=gs://${BUCKET}/flights/chapter9/output3 && \
+export JOBNAME=learn_rate_flights_$(date -u +%y%m%d_%H%M%S) && \
+gcloud ai-platform jobs submit training $JOBNAME \
+  --module-name=trainer.task \
+  --package-path=$(pwd)/flights/trainer \
+  --job-dir=$OUTPUT_DIR \
+  --staging-bucket=gs://$BUCKET \
+  --region=$REGION \
+  --scale-tier=STANDARD_1 \
+  --runtime-version=1.15 \
+  -- \
+  --output_dir=$OUTPUT_DIR \
+  --traindata $DATA_DIR/train* --evaldata $DATA_DIR/test*
+
+# Deploying and using the Model
+MODEL_LOCATION=$(gsutil ls $OUTPUT_DIR/export/exporter | tail -1) && \
+gcloud ai-platform models create flights --regions us-central1 && \
+gcloud ai-platform versions create v1 --model flights \
+                                    --origin ${MODEL_LOCATION} \
+                                    --runtime-version 1.15 \
+                                    --region global
+
+pip install --upgrade google-api-python-client && \
+pip install --upgrade oauth2client
+python
+from googleapiclient import discovery
+from oauth2client.client import GoogleCredentials
+import os
+import json
+credentials = GoogleCredentials.get_application_default()
+api = discovery.build('ml', 'v1', credentials=credentials,
+      discoveryServiceUrl=
+     'https://storage.googleapis.com/cloud-ml/discovery/ml_v1_discovery.json')
+PROJECT = os.environ['PROJECT_ID']
+parent = 'projects/%s/models/%s/versions/%s' % (PROJECT, 'flights', 'v1')
+request_data = {'instances':
+  [
+      {
+        'dep_delay': 16.0,
+        'taxiout': 13.0,
+        'distance': 160.0,
+        'avg_dep_delay': 13.34,
+        'avg_arr_delay': 67.0,
+        'carrier': 'AS',
+        'dep_lat': 61.17,
+        'dep_lon': -150.00,
+        'arr_lat': 60.49,
+        'arr_lon': -145.48,
+        'origin': 'ANC',
+        'dest': 'CDV'
+      }
+  ]
+}
+response = api.projects().predict(body=request_data, name=parent).execute()
+print ("response={0}".format(response))
+response={
+    'predictions': [{
+    'class_ids': [1],
+    'logistic': [0.894787609577179],
+    'logits': [2.1406049728393555],
+    'probabilities': [0.10521242767572403, 0.894787609577179],
+    'classes': ['1']
+  }]}

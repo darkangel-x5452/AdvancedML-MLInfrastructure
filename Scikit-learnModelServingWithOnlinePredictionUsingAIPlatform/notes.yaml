@@ -1,0 +1,61 @@
+gcloud auth list
+gcloud config list project
+
+#Create a storage bucket
+# Create Virtual Machine
+gcloud compute instances create scikit-vm \
+ --image-project=debian-cloud \
+ --image-family=debian-9 \
+ --service-account=$(gcloud config get-value project)@$(gcloud config get-value project).iam.gserviceaccount.com \
+ --scopes=cloud-platform,default,storage-full \
+ --zone=us-central1-a \
+ --tags http-server,https-server
+
+gcloud compute ssh --zone=us-central1-a scikit-vm
+sudo apt-get update && \
+sudo apt-get install -y python3-pip && \
+sudo apt-get install -y virtualenv
+
+# Install scikit-learn
+virtualenv ml-env -p python3.5 && \
+source ml-env/bin/activate && \
+pip install google-api-python-client==1.6.2 && \
+pip install scikit-learn==0.19.1 && \
+pip install pandas==0.22.0 && \
+pip install scipy==1.0.0 && \
+pip install numpy==1.17 && \
+pip install --upgrade google-api-python-client
+
+# Set up environment variables
+export PROJECT_ID=qwiklabs-gcp-00-2610635e8f3b && \
+export MODEL_PATH=gs://scikit-learn-model-bucket && \
+export MODEL_NAME=census && \
+export VERSION_NAME=v1 && \
+export REGION=us-central1
+
+# The data for this lab
+mkdir census_data && \
+curl https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data --output census_data/adult.data && \
+curl https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test --output census_data/adult.test
+
+# Train and save your model
+nano train.py
+python train.py
+
+# Upload the saved model
+gsutil cp ./model.joblib $MODEL_PATH/model.joblib
+# Create a model resource
+gcloud ai-platform models create $MODEL_NAME --region $REGION
+# Create a model version
+gcloud beta ai-platform versions create $VERSION_NAME \
+    --model $MODEL_NAME \
+    --origin $MODEL_PATH \
+    --runtime-version="1.14" \
+    --framework="SCIKIT_LEARN" \
+    --python-version="3.5" \
+    --region=$REGION
+gcloud ai-platform versions list --model $MODEL_NAME --region us-central1
+
+# Make an online prediction
+nano test.py
+python test.py

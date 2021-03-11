@@ -1,0 +1,3 @@
+# Page down until you find the def wide_and_deep_model definition. You will now remove the comments on the lines that configure the linear optimizer learning rate and the dnn optimizer learning rate. There are three lines just before the estimator definition where you need to remove comments, and then two lines inside the estimator definition where the comments must also be removed.
+
+#Now remove the final closing bracket on the line that defines the dnn_hidden_units parameter and replace it with a ,.

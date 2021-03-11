@@ -1,0 +1,50 @@
+gcloud auth list
+gcloud config list project
+# Check project permissions
+# Get started
+sudo apt -y update && \
+git clone  https://github.com/GoogleCloudPlatform/data-science-on-gcp/ && \
+sudo apt-get install virtualenv -y && \
+export PROJECT_ID=$(gcloud info --format='value(config.project)') && \
+export BUCKET=${PROJECT_ID} && \
+export REGION=us-central1 && \
+export OUTPUT_DIR=gs://${BUCKET}/flights/chapter9/output/tf2 && \
+export MODEL_LOCATION=$(gsutil ls $OUTPUT_DIR/export/exporter | tail -1) && \
+gcloud ai-platform models create flights --region $REGION && \
+gcloud ai-platform versions create tf2 --model flights \
+                                    --origin ${MODEL_LOCATION} \
+                                    --runtime-version 2.1 \
+                                    --python-version 3.7 \
+                                    --region us-central1
+
+# Configure Java components.
+sudo update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java && \
+cd ~/data-science-on-gcp/10_realtime/chapter10
+
+nano src/main/java/com/google/cloud/training/flights/FlightsMLService.java:
+  private static final String PROJECT = "";
+mvn clean compile
+
+# Start the real-time simulation script
+cd ~/data-science-on-gcp/04_streaming/simulate && \
+virtualenv -p python3 env && \
+source env/bin/activate && \
+pip install google-cloud-pubsub && \
+pip install google-cloud-bigquery && \
+pip install google_compute_engine && \
+pip install google-cloud-storage && \
+gcloud auth application-default login && \
+cd ~/data-science-on-gcp/04_streaming/simulate && \
+export PROJECT_ID=$(gcloud info --format='value(config.project)') && \
+python ./simulate.py --project $PROJECT_ID --startTime '2015-01-01 06:00:00 UTC' --endTime '2015-01-03 00:00:00 UTC' --speedFactor=60
+
+cd ~/data-science-on-gcp/10_realtime/chapter10 && \
+gcloud pubsub topics create dataflow_temp && \
+mvn versions:use-latest-versions && \
+export BUCKET=qwiklabs-gcp-01-87ddc0b08e70 && \
+export PROJECT_ID=qwiklabs-gcp-01-87ddc0b08e70 && \
+mvn compile exec:java \
+-Dexec.mainClass=com.google.cloud.training.flights.AddRealtimePrediction \
+ -Dexec.args="--realtime --speedupFactor=60 --maxNumWorkers=3 --autoscalingAlgorithm=THROUGHPUT_BASED --bucket=$BUCKET --project=$PROJECT_ID --region=us-central1"
+
+SELECT * from flights.predictions ORDER by notify_time DESC LIMIT 5
